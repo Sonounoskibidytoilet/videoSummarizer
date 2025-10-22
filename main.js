@@ -1,42 +1,57 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const button = document.getElementById("generate");
+const result = document.getElementById("result");
 
-// Metti qui il tuo URL e la publishable key
-const supabaseUrl = 'https://kowetlzcfhiacmqtobmk.supabase.co';
-const supabaseKey = 'sb_publishable_UYZOq6sYNjxGmkMBNQJJ9A_7VZ22lqn'; // INCOLLA QUI la Publishable key (non la secret)
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Test di connessione: legge 1 riga dalla tabella summaries
-async function testConnection() {
-  const { data, error } = await supabase
-    .from('summaries')
-    .select('*')
-    .limit(1);
-
-  if (error) {
-    console.error('Errore Supabase:', error);
-    alert('Errore di connessione. Controlla console.');
-    return;
-  }
-  console.log('Connessione OK, sample data:', data);
-  alert('Connessione a Supabase OK (controlla console)');
-}
-
-document.getElementById('generate').addEventListener('click', async () => {
-  const videoName = document.getElementById('videoName').value;
-  if (!videoName) return alert('Scrivi il nome del video.');
-
-  // qui metti la tua funzione per generare il riassunto (IA)
-  const summary = `Riassunto di prova per "${videoName}"`;
-
-  const { data, error } = await supabase
-    .from('summaries')
-    .insert([{ video_name: videoName, summary }]);
-
-  if (error) {
-    console.error('Errore salvataggio:', error);
-    alert('Errore nel salvataggio (vedi console)');
+button.addEventListener("click", async () => {
+  const videoUrl = document.getElementById("videoUrl").value.trim();
+  if (!videoUrl) {
+    result.textContent = "Inserisci un link YouTube valido.";
     return;
   }
 
-  document.getElementById('result').textContent = summary;
+  result.textContent = "⏳ Recupero i sottotitoli...";
+
+  try {
+    // 1️⃣ Estrae i sottotitoli
+    const transcriptRes = await fetch(
+      `https://yt.lemnoslife.com/videos?part=transcript&id=${getVideoId(videoUrl)}`
+    );
+    const data = await transcriptRes.json();
+
+    if (!data.items || !data.items[0].transcript?.transcript) {
+      result.textContent = "❌ Nessun sottotitolo trovato.";
+      return;
+    }
+
+    const transcriptText = data.items[0].transcript.transcript
+      .map(t => t.text)
+      .join(" ");
+
+    result.textContent = "✍️ Creo il riassunto...";
+
+    // 2️⃣ Riassume con Hugging Face
+    const summaryRes = await fetch(
+      "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer hf_FakeTokenQui", // <-- ti spiego sotto
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ inputs: transcriptText.slice(0, 2000) })
+      }
+    );
+
+    const summaryData = await summaryRes.json();
+    const summary = summaryData[0]?.summary_text || "Errore nel riassunto.";
+
+    result.textContent = summary;
+  } catch (err) {
+    console.error(err);
+    result.textContent = "⚠️ Errore durante il riassunto.";
+  }
 });
+
+function getVideoId(url) {
+  const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
