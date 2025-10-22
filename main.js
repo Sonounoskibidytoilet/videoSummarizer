@@ -1,57 +1,49 @@
-const button = document.getElementById("generate");
-const result = document.getElementById("result");
+// main.js
 
-button.addEventListener("click", async () => {
-  const videoUrl = document.getElementById("videoUrl").value.trim();
-  if (!videoUrl) {
-    result.textContent = "Inserisci un link YouTube valido.";
+// Inserisci qui il tuo token Hugging Face
+const HF_TOKEN = import.meta.env.VITE_HF_TOKEN;
+
+// URL del modello di riassunto (gratuito e affidabile)
+const MODEL_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn";
+
+document.getElementById("generate").addEventListener("click", async () => {
+  const input = document.getElementById("videoName");
+  const resultBox = document.getElementById("result");
+  const videoName = input.value.trim();
+
+  if (!videoName) {
+    resultBox.textContent = "Scrivi il nome o il link del video prima di continuare.";
     return;
   }
 
-  result.textContent = "⏳ Recupero i sottotitoli...";
+  resultBox.textContent = "⏳ Sto generando il riassunto...";
 
   try {
-    // 1️⃣ Estrae i sottotitoli
-    const transcriptRes = await fetch(
-      `https://yt.lemnoslife.com/videos?part=transcript&id=${getVideoId(videoUrl)}`
-    );
-    const data = await transcriptRes.json();
+    // Per ora prendiamo solo il testo scritto, in futuro potrai aggiungere l’estrazione da YouTube
+    const testoDaRiassumere = `Titolo del video: ${videoName}`;
 
-    if (!data.items || !data.items[0].transcript?.transcript) {
-      result.textContent = "❌ Nessun sottotitolo trovato.";
-      return;
+    const response = await fetch(MODEL_URL, {
+      headers: {
+        Authorization: `Bearer ${HF_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+      body: JSON.stringify({ inputs: testoDaRiassumere }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Errore: ${response.status}`);
     }
 
-    const transcriptText = data.items[0].transcript.transcript
-      .map(t => t.text)
-      .join(" ");
+    const data = await response.json();
 
-    result.textContent = "✍️ Creo il riassunto...";
-
-    // 2️⃣ Riassume con Hugging Face
-    const summaryRes = await fetch(
-      "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer hf_FakeTokenQui", // <-- ti spiego sotto
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ inputs: transcriptText.slice(0, 2000) })
-      }
-    );
-
-    const summaryData = await summaryRes.json();
-    const summary = summaryData[0]?.summary_text || "Errore nel riassunto.";
-
-    result.textContent = summary;
-  } catch (err) {
-    console.error(err);
-    result.textContent = "⚠️ Errore durante il riassunto.";
+    if (data && data[0] && data[0].summary_text) {
+      resultBox.textContent = `🎬 Riassunto: ${data[0].summary_text}`;
+    } else {
+      resultBox.textContent = "Nessun riassunto trovato, riprova.";
+    }
+  } catch (error) {
+    console.error(error);
+    resultBox.textContent = "❌ Errore nella generazione del riassunto.";
   }
 });
-
-function getVideoId(url) {
-  const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  return match ? match[1] : null;
-}
